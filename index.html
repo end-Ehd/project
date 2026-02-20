@@ -1,31 +1,2841 @@
-<!DOCTYPE html>
+<!--
+대학 관리자 대시보드 (단일 HTML)
+- 기능 요약: 헤더(오늘 날짜/디지털 시계/아날로그 시계), 월간 달력(일요일 시작)+일정 CRUD/다가오는 일정(7일), 일정 백업(내보내기/가져오기),
+  빠른 링크(고정 2개 포함 + 사용자 관리), 날씨(집/학교 2카드, Open‑Meteo), 뽀모도로(25/5 기본, 설정 저장)
+- localStorage keys: dashboard.events, dashboard.links, dashboard.pomodoro, dashboard.settings
+- Open‑Meteo 엔드포인트(예):
+  https://api.open-meteo.com/v1/forecast?latitude=37.172063150481&longitude=127.04513284179&current=temperature_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Asia%2FSeoul&forecast_days=2
+  https://api.open-meteo.com/v1/forecast?latitude=37.339496586083&longitude=126.73287520461&current=temperature_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Asia%2FSeoul&forecast_days=2
+-->
+<!doctype html>
 <html lang="ko">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>대학 관리자 대시보드</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-      @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap');
-      body {
-        font-family: 'Noto Sans KR', sans-serif;
-      }
-    </style>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light" />
+  <title>대학 관리자 대시보드</title>
+  <style>
+    :root{
+      --bg:#f6f8fc;
+      --card:#ffffff;
+      --text:#0f172a;
+      --muted:#64748b;
+      --border:#e2e8f0;
+      --shadow: 0 16px 40px rgba(2,6,23,.08);
+      --shadow2: 0 10px 25px rgba(2,6,23,.06);
+      --accent:#2563eb;
+      --accent-weak: rgba(37,99,235,.10);
+      --danger:#dc2626;
+      --ok:#16a34a;
+      --radius: 16px;
+      --radius-sm: 12px;
+      --ring: 0 0 0 4px rgba(37,99,235,.18);
+      --focus: 0 0 0 4px rgba(37,99,235,.25);
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+    }
+    *{ box-sizing:border-box; }
+    html, body { height: 100%; }
+    body{
+      margin:0;
+      font-family: var(--sans);
+      color: var(--text);
+      background: radial-gradient(1200px 600px at 20% -10%, rgba(37,99,235,.10), transparent 60%),
+                  radial-gradient(900px 500px at 90% 10%, rgba(37,99,235,.06), transparent 55%),
+                  var(--bg);
+      line-height: 1.35;
+    }
+    a{ color: inherit; text-decoration: none; }
+    button, input, textarea, select { font: inherit; }
+    button{
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--text);
+      border-radius: 12px;
+      padding: 10px 12px;
+      box-shadow: 0 1px 0 rgba(2,6,23,.02);
+      transition: transform .04s ease, box-shadow .12s ease, border-color .12s ease, background .12s ease;
+    }
+    button:hover{ box-shadow: var(--shadow2); }
+    button:active{ transform: translateY(1px); }
+    button.primary{
+      background: var(--accent);
+      color: #fff;
+      border-color: rgba(37,99,235,.35);
+      box-shadow: 0 12px 30px rgba(37,99,235,.22);
+    }
+    button.primary:hover{ box-shadow: 0 16px 40px rgba(37,99,235,.25); }
+    button.ghost{
+      background: transparent;
+    }
+    button.danger{
+      background: rgba(220,38,38,.08);
+      border-color: rgba(220,38,38,.20);
+      color: var(--danger);
+    }
+    button.iconBtn{
+      width: 40px;
+      height: 40px;
+      padding: 0;
+      display: inline-grid;
+      place-items: center;
+      border-radius: 12px;
+    }
+    button.iconBtn.danger{
+      background: rgba(220,38,38,.10);
+    }
+    :focus{ outline: none; }
+    :focus-visible{ box-shadow: var(--focus); border-color: rgba(37,99,235,.55) !important; }
 
-<link rel="stylesheet" href="/index.css">
-  <script type="importmap">
-{
-  "imports": {
-    "react": "https://esm.sh/react@^19.1.0",
-    "react-dom/": "https://esm.sh/react-dom@^19.1.0/",
-    "react/": "https://esm.sh/react@^19.1.0/"
-  }
-}
-</script>
-  <script type="module" crossorigin src="/project/assets/index-lRHZ4cI7.js"></script>
+    .srOnly{
+      position:absolute !important;
+      width:1px !important;
+      height:1px !important;
+      padding:0 !important;
+      margin:-1px !important;
+      overflow:hidden !important;
+      clip:rect(0,0,0,0) !important;
+      white-space:nowrap !important;
+      border:0 !important;
+    }
+
+    .topbar{
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      background: rgba(246,248,252,.72);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid rgba(226,232,240,.75);
+    }
+    .container{
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 16px;
+    }
+    .topbarInner{
+      display:flex;
+      align-items:center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .brand{
+      display:flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 0;
+    }
+    .titleRow{
+      display:flex;
+      align-items: baseline;
+      gap: 10px;
+      min-width: 0;
+    }
+    .appTitle{
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      font-size: 18px;
+      white-space: nowrap;
+    }
+    .badge{
+      font-size: 12px;
+      color: var(--accent);
+      background: var(--accent-weak);
+      border: 1px solid rgba(37,99,235,.18);
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+    .metaRow{
+      display:flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 13px;
+      min-width: 0;
+    }
+    .digital{
+      font-family: var(--mono);
+      font-variant-numeric: tabular-nums;
+      color: var(--text);
+      background: rgba(15,23,42,.04);
+      border: 1px solid rgba(226,232,240,.85);
+      padding: 4px 10px;
+      border-radius: 10px;
+    }
+
+    .clockWrap{
+      display:flex;
+      align-items:center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+    .analog{
+      width: 74px;
+      height: 74px;
+      border-radius: 999px;
+      background: linear-gradient(#fff, #fff) padding-box,
+                  linear-gradient(180deg, rgba(37,99,235,.20), rgba(2,6,23,.08)) border-box;
+      border: 1px solid transparent;
+      box-shadow: 0 14px 35px rgba(2,6,23,.10);
+      display:grid;
+      place-items:center;
+    }
+    .analog svg{
+      width: 66px;
+      height: 66px;
+      display:block;
+    }
+
+    .grid{
+      display:grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 16px;
+      align-items: start;
+      padding-top: 6px;
+    }
+    .card{
+      grid-column: span 12;
+      background: var(--card);
+      border: 1px solid rgba(226,232,240,.85);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow2);
+      padding: 14px;
+      overflow: hidden;
+    }
+    .cardHeader{
+      display:flex;
+      align-items:center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .cardHeader h2{
+      margin: 0;
+      font-size: 15px;
+      letter-spacing: -0.01em;
+    }
+    .cardSub{
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 2px;
+    }
+    .cardFooter{
+      margin-top: 12px;
+      display:flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .footerLeft{ display:flex; gap: 10px; flex-wrap: wrap; align-items:center;}
+    .footerRight{ display:flex; gap: 10px; flex-wrap: wrap; align-items:center;}
+    .muted{ color: var(--muted); }
+    .tiny{ font-size: 12px; }
+    .pill{
+      display:inline-flex;
+      align-items:center;
+      gap: 8px;
+      padding: 6px 10px;
+      border: 1px solid rgba(226,232,240,.95);
+      background: rgba(15,23,42,.03);
+      border-radius: 999px;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    /* Responsive layout */
+    @media (min-width: 900px){
+      .card.span6{ grid-column: span 6; }
+      .card.span7{ grid-column: span 7; }
+      .card.span5{ grid-column: span 5; }
+      .card.span4{ grid-column: span 4; }
+      .card.span8{ grid-column: span 8; }
+    }
+
+    /* Calendar */
+    .calNav{
+      display:flex;
+      gap: 8px;
+      align-items:center;
+      justify-content:flex-end;
+    }
+    .monthLabel{
+      font-weight: 750;
+      letter-spacing: -0.01em;
+      color: var(--text);
+      padding: 6px 10px;
+      border-radius: 12px;
+      background: rgba(15,23,42,.03);
+      border: 1px solid rgba(226,232,240,.9);
+      min-width: 132px;
+      text-align: center;
+    }
+    .calendar{
+      display:grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 8px;
+    }
+    .dow{
+      font-size: 12px;
+      color: var(--muted);
+      text-align:center;
+      padding: 6px 0;
+      border-radius: 10px;
+    }
+    .dow.sun{ color: rgba(220,38,38,.85); }
+    .cell{
+      border: 1px solid rgba(226,232,240,.95);
+      background: rgba(255,255,255,.9);
+      border-radius: 14px;
+      min-height: 92px;
+      padding: 8px;
+      display:flex;
+      flex-direction: column;
+      gap: 6px;
+      position: relative;
+      overflow:hidden;
+    }
+    .cell.out{
+      background: rgba(15,23,42,.02);
+      color: rgba(100,116,139,.85);
+    }
+    .cell.today{
+      border-color: rgba(37,99,235,.45);
+      box-shadow: 0 0 0 3px rgba(37,99,235,.12) inset;
+      background: linear-gradient(0deg, rgba(37,99,235,.06), rgba(37,99,235,.02));
+    }
+    .dayTop{
+      display:flex;
+      align-items:center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    .dayBtn{
+      border: none;
+      background: transparent;
+      padding: 4px 6px;
+      border-radius: 10px;
+      text-align: left;
+      font-weight: 750;
+      font-size: 13px;
+      box-shadow: none;
+      color: inherit;
+    }
+    .dayBtn:hover{
+      background: rgba(37,99,235,.08);
+      box-shadow:none;
+    }
+    .addMini{
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      border-radius: 12px;
+      border: 1px solid rgba(226,232,240,.95);
+      background: rgba(15,23,42,.02);
+      display:grid;
+      place-items:center;
+      color: var(--muted);
+      box-shadow: none;
+    }
+    .addMini:hover{ background: rgba(37,99,235,.08); color: var(--text); }
+    .eventsInCell{
+      display:flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 2px;
+      flex: 1 1 auto;
+    }
+    .chip{
+      display:flex;
+      align-items:center;
+      gap: 8px;
+      border: 1px solid rgba(226,232,240,.95);
+      background: rgba(15,23,42,.02);
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 12px;
+      text-align:left;
+      box-shadow:none;
+      min-width:0;
+    }
+    .chip:hover{ background: rgba(37,99,235,.07); }
+    .chipDot{
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: var(--accent);
+      flex: 0 0 auto;
+      box-shadow: 0 0 0 2px rgba(37,99,235,.14);
+    }
+    .chipTitle{
+      overflow:hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .moreLine{
+      font-size: 12px;
+      color: var(--muted);
+      padding-left: 6px;
+    }
+
+    /* Upcoming list */
+    .list{
+      display:flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .listItem{
+      display:flex;
+      align-items:flex-start;
+      justify-content: space-between;
+      gap: 10px;
+      border: 1px solid rgba(226,232,240,.95);
+      border-radius: 14px;
+      padding: 10px 12px;
+      background: rgba(255,255,255,.85);
+    }
+    .listItem:hover{ box-shadow: var(--shadow2); }
+    .liMain{
+      display:flex;
+      gap: 10px;
+      min-width:0;
+      align-items:flex-start;
+    }
+    .liDot{
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      margin-top: 6px;
+      background: var(--accent);
+      flex: 0 0 auto;
+      box-shadow: 0 0 0 2px rgba(37,99,235,.14);
+    }
+    .liText{
+      display:flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width:0;
+    }
+    .liTitle{
+      font-weight: 750;
+      font-size: 13px;
+      min-width:0;
+      overflow:hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .liMeta{
+      font-size: 12px;
+      color: var(--muted);
+      display:flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .liAction{
+      display:flex;
+      align-items:center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .btnLinkLike{
+      border: none;
+      background: transparent;
+      padding: 6px 8px;
+      border-radius: 10px;
+      color: var(--muted);
+      box-shadow:none;
+    }
+    .btnLinkLike:hover{ background: rgba(37,99,235,.08); color: var(--text); }
+
+    /* Quick links */
+    .linksGrid{
+      display:grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+    }
+    .linkCard{
+      border: 1px solid rgba(226,232,240,.95);
+      border-radius: 16px;
+      padding: 12px;
+      display:flex;
+      gap: 12px;
+      align-items: flex-start;
+      background: rgba(255,255,255,.9);
+      transition: box-shadow .12s ease, transform .06s ease;
+    }
+    .linkCard:hover{
+      box-shadow: var(--shadow2);
+      transform: translateY(-1px);
+      border-color: rgba(37,99,235,.25);
+    }
+    .linkIcon{
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
+      display:grid;
+      place-items:center;
+      background: rgba(37,99,235,.10);
+      border: 1px solid rgba(37,99,235,.18);
+      font-size: 20px;
+      flex: 0 0 auto;
+    }
+    .linkBody{ min-width:0; }
+    .linkName{
+      font-weight: 800;
+      font-size: 14px;
+      letter-spacing: -0.01em;
+      margin-bottom: 2px;
+      white-space: nowrap;
+      overflow:hidden;
+      text-overflow: ellipsis;
+    }
+    .linkDesc{
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.3;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    /* Weather */
+    .weatherGrid{
+      display:grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+    @media (min-width: 900px){
+      .weatherGrid{ grid-template-columns: 1fr 1fr; }
+    }
+    .weatherCard{
+      border: 1px solid rgba(226,232,240,.95);
+      border-radius: 16px;
+      padding: 12px;
+      background: linear-gradient(180deg, rgba(37,99,235,.06), rgba(255,255,255,.9) 60%);
+      min-height: 154px;
+      display:flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .wTop{
+      display:flex;
+      justify-content: space-between;
+      align-items:flex-start;
+      gap: 10px;
+    }
+    .wPlace{
+      display:flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .wPlaceName{
+      font-weight: 850;
+      letter-spacing: -0.01em;
+      font-size: 14px;
+    }
+    .wUpdate{
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .wNow{
+      display:flex;
+      align-items:center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .wState{
+      display:flex;
+      align-items:center;
+      gap: 10px;
+      min-width:0;
+    }
+    .wIcon{
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
+      display:grid;
+      place-items:center;
+      background: rgba(255,255,255,.9);
+      border: 1px solid rgba(226,232,240,.95);
+      box-shadow: 0 10px 25px rgba(2,6,23,.08);
+      font-size: 20px;
+      flex: 0 0 auto;
+    }
+    .wText{
+      min-width:0;
+      display:flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .wDesc{
+      font-weight: 800;
+      font-size: 13px;
+      white-space: nowrap;
+      overflow:hidden;
+      text-overflow: ellipsis;
+    }
+    .wSmall{
+      font-size: 12px;
+      color: var(--muted);
+      display:flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .wTemp{
+      font-weight: 900;
+      font-size: 22px;
+      letter-spacing: -0.02em;
+      font-variant-numeric: tabular-nums;
+    }
+    .wGrid2{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .wKV{
+      border: 1px solid rgba(226,232,240,.95);
+      border-radius: 14px;
+      padding: 10px;
+      background: rgba(255,255,255,.85);
+    }
+    .wK{ font-size: 12px; color: var(--muted); }
+    .wV{
+      font-weight: 850;
+      margin-top: 2px;
+      font-variant-numeric: tabular-nums;
+    }
+    .wError{
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(220,38,38,.20);
+      background: rgba(220,38,38,.06);
+      color: rgba(220,38,38,.95);
+      font-size: 13px;
+    }
+
+    /* Pomodoro */
+    .pomoWrap{
+      display:flex;
+      gap: 14px;
+      align-items:center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+    }
+    .pomoLeft{
+      display:flex;
+      align-items:center;
+      gap: 14px;
+      flex: 1 1 auto;
+      min-width: 260px;
+    }
+    .pomoRing{
+      width: 116px;
+      height: 116px;
+      border-radius: 999px;
+      display:grid;
+      place-items:center;
+      position: relative;
+      flex: 0 0 auto;
+    }
+    .pomoRing svg{ width: 116px; height: 116px; display:block; }
+    .pomoCenter{
+      position:absolute;
+      inset: 0;
+      display:grid;
+      place-items:center;
+      pointer-events:none;
+    }
+    .pomoMode{
+      font-size: 12px;
+      color: var(--muted);
+      text-align:center;
+    }
+    .pomoTime{
+      font-family: var(--mono);
+      font-variant-numeric: tabular-nums;
+      font-weight: 900;
+      font-size: 20px;
+      letter-spacing: -0.02em;
+      margin-top: 2px;
+      text-align:center;
+    }
+    .pomoMeta{
+      display:flex;
+      flex-direction: column;
+      gap: 8px;
+      min-width:0;
+    }
+    .pomoRow{
+      display:flex;
+      align-items:center;
+      gap: 10px;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .pomoActions{
+      display:flex;
+      gap: 10px;
+      align-items:center;
+      flex: 0 0 auto;
+    }
+    .pomoFlash{
+      animation: flash 1.2s ease 0s 2;
+    }
+    @keyframes flash {
+      0%, 100%{ box-shadow: var(--shadow2); }
+      45%{ box-shadow: 0 0 0 5px rgba(37,99,235,.18), var(--shadow2); }
+    }
+
+    /* Modal */
+    body.modalOpen{ overflow: hidden; }
+    .overlay{
+      position: fixed;
+      inset: 0;
+      background: rgba(15,23,42,.45);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding: 18px;
+      z-index: 50;
+    }
+    .overlay[hidden]{ display:none; }
+    .modal{
+      width: min(640px, 100%);
+      max-height: min(720px, calc(100vh - 36px));
+      overflow: auto;
+      background: #fff;
+      border-radius: 18px;
+      border: 1px solid rgba(226,232,240,.9);
+      box-shadow: 0 26px 70px rgba(2,6,23,.28);
+    }
+    .modalHeader{
+      position: sticky;
+      top: 0;
+      background: rgba(255,255,255,.92);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid rgba(226,232,240,.85);
+      padding: 14px 14px 12px;
+      display:flex;
+      align-items:center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .modalHeader h3{
+      margin:0;
+      font-size: 15px;
+      letter-spacing: -0.01em;
+    }
+    .modalBody{
+      padding: 14px;
+      display:flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .modalFooter{
+      padding: 14px;
+      border-top: 1px solid rgba(226,232,240,.85);
+      display:flex;
+      align-items:center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      background: rgba(15,23,42,.02);
+    }
+    .field{
+      display:flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .field label{
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .req{ color: var(--danger); font-weight: 900; }
+    input[type="text"], input[type="url"], input[type="number"], textarea{
+      border: 1px solid rgba(226,232,240,.95);
+      border-radius: 14px;
+      padding: 10px 12px;
+      background: rgba(255,255,255,.95);
+      box-shadow: 0 1px 0 rgba(2,6,23,.02);
+    }
+    textarea{ min-height: 92px; resize: vertical; }
+    .row2{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    @media (max-width: 520px){
+      .row2{ grid-template-columns: 1fr; }
+    }
+    .hint{
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .divider{
+      height: 1px;
+      background: rgba(226,232,240,.95);
+      margin: 2px 0;
+    }
+    .miniList{
+      display:flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .miniItem{
+      display:flex;
+      align-items:center;
+      justify-content: space-between;
+      gap: 10px;
+      border: 1px solid rgba(226,232,240,.95);
+      background: rgba(255,255,255,.92);
+      border-radius: 14px;
+      padding: 10px 12px;
+    }
+    .miniItem button{
+      border:none;
+      background: transparent;
+      padding: 6px 8px;
+      border-radius: 10px;
+      box-shadow:none;
+    }
+    .miniItem button:hover{ background: rgba(37,99,235,.08); }
+    .miniLeft{
+      display:flex;
+      align-items:center;
+      gap: 10px;
+      min-width:0;
+    }
+    .miniTitle{
+      font-weight: 800;
+      font-size: 13px;
+      white-space: nowrap;
+      overflow:hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+    }
+    .miniMeta{
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow:hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+      max-width: 320px;
+    }
+    .modalError{
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(220,38,38,.20);
+      background: rgba(220,38,38,.06);
+      color: rgba(220,38,38,.95);
+      font-size: 13px;
+    }
+
+    /* Links editor */
+    .linksEditorHeader{
+      display:grid;
+      grid-template-columns: 70px 1fr 1.4fr 1fr 48px;
+      gap: 8px;
+      padding: 0 2px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .linksEditor{
+      display:flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .linkRow{
+      display:grid;
+      grid-template-columns: 70px 1fr 1.4fr 1fr 48px;
+      gap: 8px;
+      align-items:center;
+    }
+    .linkRow input{
+      border-radius: 14px;
+      padding: 10px 12px;
+    }
+    .linkRow .iconInput{
+      text-align:center;
+      font-size: 18px;
+      padding: 8px 8px;
+    }
+    @media (max-width: 780px){
+      .linksEditorHeader{ display:none; }
+      .linkRow{
+        grid-template-columns: 70px 1fr 48px;
+        grid-template-areas:
+          "icon name del"
+          "icon url del"
+          "icon desc del";
+      }
+      .linkRow .iconInput{ grid-area: icon; height: 100%; }
+      .linkRow [data-f="name"]{ grid-area: name; }
+      .linkRow [data-f="url"]{ grid-area: url; }
+      .linkRow [data-f="desc"]{ grid-area: desc; }
+      .linkRow .delBtn{ grid-area: del; }
+    }
+
+    /* Toast */
+    .toast{
+      position: fixed;
+      left: 50%;
+      bottom: 18px;
+      transform: translateX(-50%);
+      background: rgba(15,23,42,.92);
+      color: #fff;
+      padding: 12px 14px;
+      border-radius: 14px;
+      box-shadow: 0 20px 60px rgba(2,6,23,.35);
+      font-size: 13px;
+      max-width: min(560px, calc(100vw - 24px));
+      width: max-content;
+      opacity: 0;
+      pointer-events:none;
+      transition: opacity .18s ease, transform .18s ease;
+      z-index: 60;
+    }
+    .toast.show{
+      opacity: 1;
+      transform: translateX(-50%) translateY(-2px);
+    }
+
+    @media (prefers-reduced-motion: reduce){
+      *{ transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+      button:active{ transform:none; }
+    }
+  </style>
 </head>
-  <body class="bg-slate-50 text-gray-800">
-    <div id="root"></div>
-  </body>
+<body>
+  <header class="topbar" id="appHeader">
+    <div class="topbarInner">
+      <div class="brand" aria-label="대시보드 헤더">
+        <div class="titleRow">
+          <div class="appTitle">대학 관리자 대시보드</div>
+          <div class="badge" aria-label="라이트 테마 고정">Light</div>
+        </div>
+        <div class="metaRow">
+          <span id="todayKorean" aria-label="오늘 날짜"></span>
+          <span class="pill" aria-label="디지털 시계">
+            <span aria-hidden="true">🕒</span>
+            <span id="digitalClock" class="digital" aria-label="현재 시각 (24시간제)"></span>
+          </span>
+        </div>
+      </div>
+      <div class="clockWrap" aria-label="아날로그 시계 영역">
+        <div class="analog" title="아날로그 시계 (Asia/Seoul)" aria-label="아날로그 시계">
+          <svg viewBox="0 0 100 100" role="img" aria-label="아날로그 시계">
+            <defs>
+              <filter id="shadow" x="-40%" y="-40%" width="180%" height="180%">
+                <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="rgba(2,6,23,.18)"/>
+              </filter>
+            </defs>
+            <circle cx="50" cy="50" r="46" fill="white" stroke="rgba(226,232,240,.95)" stroke-width="2"></circle>
+            <g id="clockTicks" aria-hidden="true"></g>
+            <g filter="url(#shadow)">
+              <line id="handHour" x1="50" y1="52" x2="50" y2="28" stroke="#0f172a" stroke-width="4.2" stroke-linecap="round"></line>
+              <line id="handMin" x1="50" y1="52" x2="50" y2="18" stroke="#0f172a" stroke-width="3.2" stroke-linecap="round" opacity="0.92"></line>
+              <line id="handSec" x1="50" y1="56" x2="50" y2="14" stroke="#2563eb" stroke-width="2.2" stroke-linecap="round"></line>
+            </g>
+            <circle cx="50" cy="50" r="4.5" fill="#2563eb" stroke="white" stroke-width="2"></circle>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="container" id="appMain" tabindex="-1">
+    <div class="grid">
+      <!-- Calendar -->
+      <section class="card span7" aria-labelledby="calTitle">
+        <div class="cardHeader">
+          <div>
+            <h2 id="calTitle">달력</h2>
+            <div class="cardSub">날짜만 저장 (시간 입력 없음) · 일요일 시작</div>
+          </div>
+          <div class="calNav" aria-label="달력 월 이동">
+            <button id="prevMonth" class="iconBtn ghost" aria-label="이전 달">◀</button>
+            <div id="monthLabel" class="monthLabel" aria-label="현재 월"></div>
+            <button id="nextMonth" class="iconBtn ghost" aria-label="다음 달">▶</button>
+          </div>
+        </div>
+
+        <div class="calendar" role="grid" aria-label="월간 달력 (일요일 시작)">
+          <div class="dow sun" role="columnheader">일</div>
+          <div class="dow" role="columnheader">월</div>
+          <div class="dow" role="columnheader">화</div>
+          <div class="dow" role="columnheader">수</div>
+          <div class="dow" role="columnheader">목</div>
+          <div class="dow" role="columnheader">금</div>
+          <div class="dow" role="columnheader">토</div>
+
+          <div id="calendarCells" style="grid-column: 1 / -1; display:grid; grid-template-columns: repeat(7, 1fr); gap: 8px;" role="rowgroup" aria-label="날짜 셀"></div>
+        </div>
+
+        <div class="cardFooter">
+          <div class="footerLeft">
+            <button id="exportEvents" aria-label="일정 내보내기">일정 내보내기</button>
+            <button id="importEventsBtn" aria-label="일정 가져오기">일정 가져오기</button>
+            <input id="importEventsInput" type="file" accept="application/json" hidden aria-label="일정 JSON 파일 선택" />
+          </div>
+          <div class="footerRight">
+            <span class="pill" id="eventsCountPill" aria-label="이번 달 일정 개수"></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Upcoming -->
+      <section class="card span5" aria-labelledby="upTitle">
+        <div class="cardHeader">
+          <div>
+            <h2 id="upTitle">다가오는 일정</h2>
+            <div class="cardSub"><span id="upRangeLabel">기본 7일</span> · 날짜순</div>
+          </div>
+          <span class="pill" aria-label="가이드">클릭해서 수정</span>
+        </div>
+        <div id="upcomingList" class="list" role="list" aria-label="다가오는 일정 목록"></div>
+      </section>
+
+      <!-- Quick Links -->
+      <section class="card span8" aria-labelledby="linksTitle">
+        <div class="cardHeader">
+          <div>
+            <h2 id="linksTitle">빠른 링크</h2>
+            <div class="cardSub">새 탭으로 열기 · 사용자가 추가/수정/삭제 가능</div>
+          </div>
+          <button id="manageLinksBtn" aria-label="링크 관리 열기">링크 관리</button>
+        </div>
+        <div id="linksGrid" class="linksGrid" aria-label="빠른 링크 목록"></div>
+      </section>
+
+      <!-- Weather -->
+      <section class="card span4" aria-labelledby="weatherTitle">
+        <div class="cardHeader">
+          <div>
+            <h2 id="weatherTitle">날씨</h2>
+            <div class="cardSub">집/학교 · Open‑Meteo (키 불필요)</div>
+          </div>
+          <button id="refreshWeatherBtn" aria-label="날씨 새로고침">새로고침</button>
+        </div>
+        <div class="weatherGrid" aria-label="날씨 카드">
+          <div class="weatherCard" id="weatherHome" aria-label="집 날씨"></div>
+          <div class="weatherCard" id="weatherSchool" aria-label="학교 날씨"></div>
+        </div>
+        <div id="weatherError" class="wError" hidden role="alert" aria-label="날씨 오류"></div>
+        <div class="cardFooter">
+          <div class="footerLeft">
+            <span class="pill tiny" id="weatherUpdatedAtPill" aria-label="마지막 업데이트"></span>
+          </div>
+          <div class="footerRight">
+            <span class="tiny muted">Timezone: Asia/Seoul</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Pomodoro -->
+      <section class="card span12" aria-labelledby="pomoTitle" id="pomoCard">
+        <div class="cardHeader">
+          <div>
+            <h2 id="pomoTitle">뽀모도로</h2>
+            <div class="cardSub">집중/휴식 설정 저장 · 끝나면 소리+시각 알림</div>
+          </div>
+          <button id="pomoSettingsBtn" aria-label="뽀모도로 설정 열기">설정</button>
+        </div>
+
+        <div class="pomoWrap" aria-label="뽀모도로 타이머 위젯">
+          <div class="pomoLeft">
+            <div class="pomoRing" role="progressbar" aria-label="진행률" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="pomoProgressBar">
+              <svg viewBox="0 0 120 120" aria-hidden="true">
+                <circle cx="60" cy="60" r="48" fill="none" stroke="rgba(226,232,240,.95)" stroke-width="12"></circle>
+                <circle id="pomoProgressCircle" cx="60" cy="60" r="48" fill="none" stroke="rgba(37,99,235,.95)" stroke-width="12" stroke-linecap="round"
+                        stroke-dasharray="301.59" stroke-dashoffset="301.59"
+                        transform="rotate(-90 60 60)"></circle>
+              </svg>
+              <div class="pomoCenter">
+                <div>
+                  <div id="pomoMode" class="pomoMode" aria-label="현재 모드"></div>
+                  <div id="pomoTime" class="pomoTime" aria-label="남은 시간"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="pomoMeta">
+              <div class="pomoRow">
+                <span class="pill" id="pomoCycle" aria-label="사이클"></span>
+                <span class="pill" id="pomoLengths" aria-label="설정 값"></span>
+                <span class="pill" id="pomoHint" aria-label="힌트">Space/Enter로 버튼 조작 가능</span>
+              </div>
+              <div class="pomoRow">
+                <span class="tiny muted" id="pomoStatusText" aria-label="상태"></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="pomoActions" aria-label="뽀모도로 컨트롤">
+            <button id="pomoStartPause" class="primary" aria-label="시작 또는 일시정지">시작</button>
+            <button id="pomoReset" aria-label="리셋">리셋</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- Event Modal -->
+  <div class="overlay" id="eventOverlay" hidden aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="eventModalTitle">
+      <div class="modalHeader">
+        <h3 id="eventModalTitle">일정</h3>
+        <button class="iconBtn ghost" data-close="eventOverlay" aria-label="모달 닫기">✕</button>
+      </div>
+      <form id="eventForm" class="modalBody">
+        <div class="field">
+          <label for="eventDate">날짜</label>
+          <input id="eventDate" type="text" readonly aria-label="선택한 날짜" />
+          <div class="hint">※ 일정은 “날짜만” 저장됩니다 (시간 입력 없음)</div>
+        </div>
+
+        <div class="field">
+          <label for="eventTitle">제목 <span class="req">*</span></label>
+          <input id="eventTitle" type="text" required maxlength="80" placeholder="예: 장학금 서류 제출" aria-label="일정 제목" />
+        </div>
+
+        <div class="row2">
+          <div class="field">
+            <label for="eventLocation">장소</label>
+            <input id="eventLocation" type="text" maxlength="80" placeholder="예: 학생회관 2층" aria-label="장소" />
+          </div>
+          <div class="field">
+            <label for="eventColor">색상</label>
+            <input id="eventColor" type="color" value="#2563eb" aria-label="일정 색상" style="height:44px; padding: 6px 10px;" />
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="eventMemo">메모</label>
+          <textarea id="eventMemo" maxlength="500" placeholder="필요한 메모를 적어두세요." aria-label="메모"></textarea>
+        </div>
+
+        <div class="divider" aria-hidden="true"></div>
+
+        <div class="field" id="sameDaySection" hidden>
+          <label>이 날짜의 일정</label>
+          <div class="miniList" id="sameDayList" aria-label="같은 날짜 일정 목록"></div>
+          <div class="hint">팁: 목록을 클릭하면 해당 일정을 불러와 수정할 수 있어요.</div>
+        </div>
+
+        <div id="eventModalError" class="modalError" hidden role="alert" aria-label="일정 오류"></div>
+      </form>
+
+      <div class="modalFooter">
+        <button id="eventDelete" class="danger" type="button" aria-label="일정 삭제" hidden>삭제</button>
+        <div style="flex: 1 1 auto;"></div>
+        <button type="button" data-close="eventOverlay" aria-label="취소">취소</button>
+        <button id="eventSave" class="primary" type="submit" form="eventForm" aria-label="저장">저장</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Links Modal -->
+  <div class="overlay" id="linksOverlay" hidden aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="linksModalTitle">
+      <div class="modalHeader">
+        <h3 id="linksModalTitle">링크 관리</h3>
+        <button class="iconBtn ghost" data-close="linksOverlay" aria-label="모달 닫기">✕</button>
+      </div>
+
+      <form id="linksForm" class="modalBody">
+        <div class="hint">아이콘(이모지), 이름, URL을 입력하세요. URL은 http/https로 시작해야 합니다.</div>
+
+        <div class="linksEditorHeader" aria-hidden="true">
+          <div>아이콘</div>
+          <div>이름</div>
+          <div>URL</div>
+          <div>설명</div>
+          <div></div>
+        </div>
+
+        <div id="linksEditor" class="linksEditor" aria-label="링크 편집 목록"></div>
+
+        <div style="display:flex; gap:10px; flex-wrap: wrap; align-items:center;">
+          <button type="button" id="addLinkRowBtn" aria-label="링크 추가">+ 링크 추가</button>
+          <button type="button" id="resetLinksBtn" class="ghost" aria-label="기본 링크로 초기화">기본 링크로 초기화</button>
+        </div>
+
+        <div id="linksModalError" class="modalError" hidden role="alert" aria-label="링크 오류"></div>
+      </form>
+
+      <div class="modalFooter">
+        <span class="tiny muted">저장하면 바로 반영되고 localStorage에 보관됩니다.</span>
+        <div style="flex: 1 1 auto;"></div>
+        <button type="button" data-close="linksOverlay" aria-label="취소">취소</button>
+        <button type="submit" form="linksForm" class="primary" aria-label="저장">저장</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pomodoro Settings Modal -->
+  <div class="overlay" id="pomoOverlay" hidden aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="pomoModalTitle">
+      <div class="modalHeader">
+        <h3 id="pomoModalTitle">뽀모도로 설정</h3>
+        <button class="iconBtn ghost" data-close="pomoOverlay" aria-label="모달 닫기">✕</button>
+      </div>
+
+      <form id="pomoForm" class="modalBody">
+        <div class="row2">
+          <div class="field">
+            <label for="focusMin">집중(분)</label>
+            <input id="focusMin" type="number" min="1" max="180" step="1" aria-label="집중 시간(분)" />
+          </div>
+          <div class="field">
+            <label for="breakMin">휴식(분)</label>
+            <input id="breakMin" type="number" min="0" max="60" step="1" aria-label="휴식 시간(분)" />
+          </div>
+        </div>
+
+        <div class="row2">
+          <div class="field">
+            <label for="cycles">사이클(예: 4)</label>
+            <input id="cycles" type="number" min="1" max="12" step="1" aria-label="사이클 수" />
+            <div class="hint">집중+휴식을 1사이클로 계산합니다.</div>
+          </div>
+          <div class="field">
+            <label for="soundOn">소리 알림</label>
+            <select id="soundOn" aria-label="소리 알림 여부">
+              <option value="on">켜기</option>
+              <option value="off">끄기</option>
+            </select>
+            <div class="hint">브라우저 정책상 “사용자 조작 후” 소리가 재생됩니다.</div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="notifyOn">브라우저 알림(옵션)</label>
+          <select id="notifyOn" aria-label="브라우저 알림 사용 여부">
+            <option value="off">사용 안 함</option>
+            <option value="on">사용 (권한 요청)</option>
+          </select>
+          <div class="hint">지원/권한이 없으면 자동으로 무시됩니다.</div>
+        </div>
+
+        <div id="pomoModalError" class="modalError" hidden role="alert" aria-label="뽀모도로 오류"></div>
+      </form>
+
+      <div class="modalFooter">
+        <span class="tiny muted">설정값은 localStorage에 저장됩니다.</span>
+        <div style="flex: 1 1 auto;"></div>
+        <button type="button" data-close="pomoOverlay" aria-label="취소">취소</button>
+        <button type="submit" form="pomoForm" class="primary" aria-label="저장">저장</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      "use strict";
+
+      // ===== Constants =====
+      const TZ = "Asia/Seoul";
+      const MS_DAY = 24 * 60 * 60 * 1000;
+      const STORAGE = {
+        events: "dashboard.events",
+        links: "dashboard.links",
+        pomodoro: "dashboard.pomodoro",
+        settings: "dashboard.settings"
+      };
+      const DEFAULT_LINKS = [
+        {
+          id: "eclass",
+          icon: "🎓",
+          name: "e-class",
+          desc: "강의/공지/과제",
+          url: "https://eclass.tukorea.ac.kr/ilos/main/main_form.acl"
+        },
+        {
+          id: "ucan",
+          icon: "🧭",
+          name: "U-CAN+",
+          desc: "진로/취업 역량",
+          url: "https://job.kpu.ac.kr/common/user/login.do?rtnUrl=21306aa07dd2f16c34d6c553b2e842ba014b25b816e5523c22ff3f6c59ab3da5"
+        }
+      ];
+      const DEFAULT_POMODORO = {
+        focusMin: 25,
+        breakMin: 5,
+        cycles: 4,
+        sound: true,
+        notify: false
+      };
+      const DEFAULT_SETTINGS = {
+        upcomingDays: 7
+      };
+
+      const LOCATIONS = {
+        home: {
+          key: "home",
+          name: "집 (오산)",
+          lat: 37.172063150481,
+          lon: 127.04513284179
+        },
+        school: {
+          key: "school",
+          name: "학교 (정왕)",
+          lat: 37.339496586083,
+          lon: 126.73287520461
+        }
+      };
+
+      const WEATHER_CODE_MAP = (() => {
+        // WMO weather interpretation codes (Open‑Meteo docs)
+        const map = new Map();
+        const set = (codes, icon, text) => {
+          (Array.isArray(codes) ? codes : [codes]).forEach(c => map.set(c, { icon, text }));
+        };
+        set(0, "☀️", "맑음");
+        set([1,2], "🌤️", "대체로 맑음");
+        set(3, "☁️", "흐림");
+        set([45,48], "🌫️", "안개");
+        set([51,53,55], "🌦️", "이슬비");
+        set([56,57], "🌧️", "어는 이슬비");
+        set([61,63,65], "🌧️", "비");
+        set([66,67], "🌧️", "어는 비");
+        set([71,73,75], "❄️", "눈");
+        set(77, "❄️", "싸락눈");
+        set([80,81,82], "🌧️", "소나기");
+        set([85,86], "❄️", "눈 소나기");
+        set(95, "⛈️", "뇌우");
+        set([96,99], "⛈️", "우박 동반 뇌우");
+        return {
+          get(code){
+            if (map.has(code)) return map.get(code);
+            return { icon: "🌡️", text: "알 수 없음" };
+          }
+        };
+      })();
+
+      // ===== Intl formatters (must use Asia/Seoul) =====
+      const dtf = {
+        ymd: new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }),
+        time: new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+        timeHM: new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour12: false, hour: "2-digit", minute: "2-digit" }),
+        dateMDW: new Intl.DateTimeFormat("ko-KR", { timeZone: TZ, month: "numeric", day: "numeric", weekday: "short" }),
+        monthLabel: new Intl.DateTimeFormat("ko-KR", { timeZone: TZ, year: "numeric", month: "long" })
+      };
+
+      // ===== Utilities =====
+      const $ = (sel, root = document) => root.querySelector(sel);
+      const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+
+      const pad2 = (n) => String(n).padStart(2, "0");
+
+      function safeJSONParse(str, fallback){
+        try { return JSON.parse(str); } catch { return fallback; }
+      }
+      function loadJSON(key, fallback){
+        const raw = localStorage.getItem(key);
+        if (raw == null) return fallback;
+        return safeJSONParse(raw, fallback);
+      }
+      function saveJSON(key, value){
+        localStorage.setItem(key, JSON.stringify(value));
+      }
+      function uid(){
+        if (crypto && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+        return "id_" + Math.random().toString(16).slice(2) + "_" + Date.now().toString(16);
+      }
+      function clamp(n, min, max){
+        return Math.min(max, Math.max(min, n));
+      }
+      function formatKoreanMDW(date){
+        // Target: “2월 19일 (목)”
+        const parts = dtf.dateMDW.formatToParts(date);
+        const month = parts.find(p => p.type === "month")?.value ?? "";
+        const day = parts.find(p => p.type === "day")?.value ?? "";
+        const weekday = parts.find(p => p.type === "weekday")?.value ?? "";
+        return `${month}월 ${day}일 (${weekday})`;
+      }
+      function dateFromIdNoonUTC(dateId){
+        // dateId: YYYY-MM-DD
+        const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateId);
+        if (!m) return new Date(Date.UTC(2000,0,1,12));
+        const y = Number(m[1]), mo = Number(m[2]) - 1, d = Number(m[3]);
+        return new Date(Date.UTC(y, mo, d, 12, 0, 0));
+      }
+      function addDaysToDateId(dateId, days){
+        const dt = dateFromIdNoonUTC(dateId);
+        const ms = dt.getTime() + days * MS_DAY;
+        const out = new Date(ms);
+        // Use UTC parts (date stored logically)
+        const y = out.getUTCFullYear();
+        const m = out.getUTCMonth() + 1;
+        const d = out.getUTCDate();
+        return `${y}-${pad2(m)}-${pad2(d)}`;
+      }
+      function isValidDateId(dateId){
+        return /^\d{4}-\d{2}-\d{2}$/.test(dateId);
+      }
+      function normalizeUrl(url){
+        const trimmed = (url || "").trim();
+        if (!trimmed) return "";
+        try{
+          const u = new URL(trimmed);
+          if (u.protocol !== "http:" && u.protocol !== "https:") return "";
+          return u.toString();
+        }catch{
+          return "";
+        }
+      }
+
+      function toast(msg){
+        const el = $("#toast");
+        el.textContent = msg;
+        el.classList.add("show");
+        window.clearTimeout(toast._t);
+        toast._t = window.setTimeout(() => el.classList.remove("show"), 2800);
+      }
+
+      // ===== Timezone offset helper (for smooth analog) =====
+      function getTimeZoneOffsetMinutes(timeZone, date = new Date()){
+        try{
+          const parts = new Intl.DateTimeFormat("en-US", { timeZone, timeZoneName: "shortOffset" }).formatToParts(date);
+          const tzName = parts.find(p => p.type === "timeZoneName")?.value || "";
+          const m = tzName.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/);
+          if (!m) return null;
+          const sign = m[1] === "-" ? -1 : 1;
+          const hours = parseInt(m[2], 10);
+          const mins = m[3] ? parseInt(m[3], 10) : 0;
+          return sign * (hours * 60 + mins);
+        }catch{
+          return null;
+        }
+      }
+      const SEOUL_OFFSET_MIN = getTimeZoneOffsetMinutes(TZ) ?? 540;
+
+      function seoulDateIdNow(){
+        return dtf.ymd.format(new Date()); // YYYY-MM-DD in Seoul
+      }
+
+      // ===== App State =====
+      const state = {
+        settings: { ...DEFAULT_SETTINGS, ...(loadJSON(STORAGE.settings, {}) || {}) },
+        links: (() => {
+          const loaded = loadJSON(STORAGE.links, null);
+          if (Array.isArray(loaded) && loaded.length) return loaded;
+          saveJSON(STORAGE.links, DEFAULT_LINKS);
+          return DEFAULT_LINKS.slice();
+        })(),
+        events: (() => {
+          const loaded = loadJSON(STORAGE.events, []);
+          if (!Array.isArray(loaded)) return [];
+          return loaded.filter(e => e && isValidDateId(e.date) && typeof e.title === "string" && e.title.trim());
+        })(),
+        pomodoro: { ...DEFAULT_POMODORO, ...(loadJSON(STORAGE.pomodoro, {}) || {}) },
+        calendarView: (() => {
+          const today = seoulDateIdNow();
+          const [y, m] = today.split("-").map(Number);
+          return { year: y, monthIndex: m - 1 };
+        })(),
+        weather: {
+          lastFetchAt: null,
+          home: null,
+          school: null
+        }
+      };
+
+      function persistAll(){
+        saveJSON(STORAGE.settings, state.settings);
+        saveJSON(STORAGE.links, state.links);
+        saveJSON(STORAGE.events, state.events);
+        saveJSON(STORAGE.pomodoro, state.pomodoro);
+      }
+      function persistEvents(){ saveJSON(STORAGE.events, state.events); }
+      function persistLinks(){ saveJSON(STORAGE.links, state.links); }
+      function persistPomodoro(){ saveJSON(STORAGE.pomodoro, state.pomodoro); }
+
+      // ===== DOM Refs =====
+      const els = {};
+      function cacheEls(){
+        els.todayKorean = $("#todayKorean");
+        els.digitalClock = $("#digitalClock");
+
+        els.monthLabel = $("#monthLabel");
+        els.prevMonth = $("#prevMonth");
+        els.nextMonth = $("#nextMonth");
+        els.calendarCells = $("#calendarCells");
+        els.eventsCountPill = $("#eventsCountPill");
+
+        els.upcomingList = $("#upcomingList");
+        els.upRangeLabel = $("#upRangeLabel");
+
+        els.linksGrid = $("#linksGrid");
+        els.manageLinksBtn = $("#manageLinksBtn");
+
+        els.weatherHome = $("#weatherHome");
+        els.weatherSchool = $("#weatherSchool");
+        els.refreshWeatherBtn = $("#refreshWeatherBtn");
+        els.weatherError = $("#weatherError");
+        els.weatherUpdatedAtPill = $("#weatherUpdatedAtPill");
+
+        els.exportEvents = $("#exportEvents");
+        els.importEventsBtn = $("#importEventsBtn");
+        els.importEventsInput = $("#importEventsInput");
+
+        els.eventOverlay = $("#eventOverlay");
+        els.eventForm = $("#eventForm");
+        els.eventDate = $("#eventDate");
+        els.eventTitle = $("#eventTitle");
+        els.eventLocation = $("#eventLocation");
+        els.eventMemo = $("#eventMemo");
+        els.eventColor = $("#eventColor");
+        els.eventDelete = $("#eventDelete");
+        els.sameDaySection = $("#sameDaySection");
+        els.sameDayList = $("#sameDayList");
+        els.eventModalError = $("#eventModalError");
+
+        els.linksOverlay = $("#linksOverlay");
+        els.linksForm = $("#linksForm");
+        els.linksEditor = $("#linksEditor");
+        els.addLinkRowBtn = $("#addLinkRowBtn");
+        els.resetLinksBtn = $("#resetLinksBtn");
+        els.linksModalError = $("#linksModalError");
+
+        els.pomoCard = $("#pomoCard");
+        els.pomoOverlay = $("#pomoOverlay");
+        els.pomoSettingsBtn = $("#pomoSettingsBtn");
+        els.pomoForm = $("#pomoForm");
+        els.focusMin = $("#focusMin");
+        els.breakMin = $("#breakMin");
+        els.cycles = $("#cycles");
+        els.soundOn = $("#soundOn");
+        els.notifyOn = $("#notifyOn");
+        els.pomoModalError = $("#pomoModalError");
+
+        els.pomoMode = $("#pomoMode");
+        els.pomoTime = $("#pomoTime");
+        els.pomoCycle = $("#pomoCycle");
+        els.pomoLengths = $("#pomoLengths");
+        els.pomoStartPause = $("#pomoStartPause");
+        els.pomoReset = $("#pomoReset");
+        els.pomoProgressCircle = $("#pomoProgressCircle");
+        els.pomoProgressBar = $("#pomoProgressBar");
+        els.pomoStatusText = $("#pomoStatusText");
+
+        els.handHour = $("#handHour");
+        els.handMin = $("#handMin");
+        els.handSec = $("#handSec");
+      }
+
+      // ===== Clock =====
+      function buildAnalogTicks(){
+        const ticksG = $("#clockTicks");
+        if (!ticksG) return;
+        const NS = "http://www.w3.org/2000/svg";
+        ticksG.innerHTML = "";
+        for (let i = 0; i < 60; i++){
+          const isHour = i % 5 === 0;
+          const line = document.createElementNS(NS, "line");
+          line.setAttribute("x1", "50");
+          line.setAttribute("y1", isHour ? "6.5" : "8.5");
+          line.setAttribute("x2", "50");
+          line.setAttribute("y2", isHour ? "14.5" : "12.5");
+          line.setAttribute("stroke", isHour ? "rgba(15,23,42,.85)" : "rgba(148,163,184,.85)");
+          line.setAttribute("stroke-width", isHour ? "2.4" : "1.2");
+          line.setAttribute("stroke-linecap", "round");
+          line.setAttribute("transform", `rotate(${i * 6} 50 50)`);
+          ticksG.appendChild(line);
+        }
+      }
+
+      function renderClockOnce(){
+        const now = new Date();
+        els.todayKorean.textContent = formatKoreanMDW(now);
+        els.digitalClock.textContent = dtf.time.format(now);
+      }
+      function startClock(){
+        renderClockOnce();
+        window.setInterval(renderClockOnce, 1000);
+
+        // Smooth analog using timezone offset minutes (approx; Korea has no DST)
+        const tick = () => {
+          const d = new Date(Date.now() + SEOUL_OFFSET_MIN * 60 * 1000);
+          const ms = d.getUTCMilliseconds();
+          const sec = d.getUTCSeconds() + ms / 1000;
+          const min = d.getUTCMinutes() + sec / 60;
+          const hr = (d.getUTCHours() % 12) + min / 60;
+
+          const secDeg = sec * 6;
+          const minDeg = min * 6;
+          const hrDeg = hr * 30;
+
+          if (els.handSec) els.handSec.setAttribute("transform", `rotate(${secDeg} 50 50)`);
+          if (els.handMin) els.handMin.setAttribute("transform", `rotate(${minDeg} 50 50)`);
+          if (els.handHour) els.handHour.setAttribute("transform", `rotate(${hrDeg} 50 50)`);
+
+          requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      }
+
+      // ===== Modal (focus trap + ESC + backdrop click) =====
+      let activeOverlay = null;
+      let lastFocusEl = null;
+      let focusTrapHandler = null;
+
+      function getFocusable(root){
+        const candidates = $$(
+          'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+          root
+        );
+        return candidates.filter(el => !el.hasAttribute("disabled") && !el.getAttribute("aria-hidden"));
+      }
+
+      function openOverlay(overlayEl, { initialFocus } = {}){
+        if (!overlayEl) return;
+        // close any open overlay first
+        if (activeOverlay && activeOverlay !== overlayEl) closeOverlay(activeOverlay);
+
+        lastFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+        overlayEl.hidden = false;
+        overlayEl.setAttribute("aria-hidden", "false");
+        document.body.classList.add("modalOpen");
+        $("#appMain")?.setAttribute("aria-hidden", "true");
+        $("#appHeader")?.setAttribute("aria-hidden", "true");
+
+        activeOverlay = overlayEl;
+
+        // Focus
+        const modal = overlayEl.querySelector(".modal");
+        const focusables = getFocusable(modal);
+        const target = initialFocus || focusables[0] || modal;
+        window.setTimeout(() => {
+          try{ target.focus(); } catch {}
+        }, 0);
+
+        // Trap
+        focusTrapHandler = (e) => {
+          if (!activeOverlay) return;
+          if (e.key === "Escape"){
+            e.preventDefault();
+            closeOverlay(activeOverlay);
+            return;
+          }
+          if (e.key !== "Tab") return;
+
+          const modalEl = activeOverlay.querySelector(".modal");
+          const list = getFocusable(modalEl);
+          if (!list.length) return;
+
+          const first = list[0];
+          const last = list[list.length - 1];
+
+          if (e.shiftKey && document.activeElement === first){
+            e.preventDefault();
+            last.focus();
+          } else if (!e.shiftKey && document.activeElement === last){
+            e.preventDefault();
+            first.focus();
+          }
+        };
+        document.addEventListener("keydown", focusTrapHandler, true);
+      }
+
+      function closeOverlay(overlayEl){
+        if (!overlayEl) return;
+        overlayEl.hidden = true;
+        overlayEl.setAttribute("aria-hidden", "true");
+        document.body.classList.remove("modalOpen");
+        $("#appMain")?.removeAttribute("aria-hidden");
+        $("#appHeader")?.removeAttribute("aria-hidden");
+
+        if (focusTrapHandler){
+          document.removeEventListener("keydown", focusTrapHandler, true);
+          focusTrapHandler = null;
+        }
+
+        activeOverlay = null;
+
+        if (lastFocusEl){
+          try{ lastFocusEl.focus(); } catch {}
+        }
+        lastFocusEl = null;
+      }
+
+      function wireModalSystem(){
+        // Close buttons
+        document.addEventListener("click", (e) => {
+          const btn = e.target.closest("[data-close]");
+          if (btn){
+            const id = btn.getAttribute("data-close");
+            const overlay = document.getElementById(id);
+            if (overlay) closeOverlay(overlay);
+          }
+        });
+
+        // Backdrop click closes
+        $$(".overlay").forEach(overlay => {
+          overlay.addEventListener("mousedown", (e) => {
+            if (e.target === overlay){
+              closeOverlay(overlay);
+            }
+          });
+        });
+      }
+
+      // ===== Calendar + Events =====
+      function eventsByDateMap(){
+        const map = new Map();
+        for (const ev of state.events){
+          if (!map.has(ev.date)) map.set(ev.date, []);
+          map.get(ev.date).push(ev);
+        }
+        for (const [k, arr] of map.entries()){
+          arr.sort((a,b) => {
+            // stable-ish: title then updatedAt
+            const at = (a.title || "").localeCompare(b.title || "");
+            if (at !== 0) return at;
+            return String(a.updatedAt || "").localeCompare(String(b.updatedAt || ""));
+          });
+          map.set(k, arr);
+        }
+        return map;
+      }
+
+      function renderCalendar(){
+        const { year, monthIndex } = state.calendarView;
+
+        const first = new Date(Date.UTC(year, monthIndex, 1));
+        const firstDow = first.getUTCDay(); // 0=Sun
+        const daysInMonth = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
+
+        // 6 weeks (42 cells)
+        const cells = [];
+        const todayId = seoulDateIdNow();
+        const evMap = eventsByDateMap();
+
+        let monthEventsCount = 0;
+
+        for (let i = 0; i < 42; i++){
+          const dayNum = i - firstDow + 1;
+          const dateObj = new Date(Date.UTC(year, monthIndex, dayNum, 12, 0, 0));
+          const cellY = dateObj.getUTCFullYear();
+          const cellM = dateObj.getUTCMonth();
+          const cellD = dateObj.getUTCDate();
+          const dateId = `${cellY}-${pad2(cellM + 1)}-${pad2(cellD)}`;
+          const inMonth = cellM === monthIndex;
+
+          const events = evMap.get(dateId) || [];
+          if (inMonth) monthEventsCount += events.length;
+
+          const visible = events.slice(0, 3); // 2~3개 표시
+          const more = Math.max(0, events.length - visible.length);
+
+          const cellClasses = ["cell"];
+          if (!inMonth) cellClasses.push("out");
+          if (dateId === todayId) cellClasses.push("today");
+
+          const dayLabel = dtf.dateMDW.format(dateFromIdNoonUTC(dateId)); // for aria
+
+          const chipsHtml = visible.map(ev => {
+            const color = (ev.color && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(ev.color)) ? ev.color : "#2563eb";
+            const loc = (ev.location || "").trim();
+            const aria = loc ? `${ev.title} (${loc}) 일정 수정` : `${ev.title} 일정 수정`;
+            return `
+              <button type="button" class="chip" data-action="editEvent" data-id="${escapeHtmlAttr(ev.id)}" aria-label="${escapeHtmlAttr(aria)}" title="${escapeHtmlAttr(ev.title)}">
+                <span class="chipDot" aria-hidden="true" style="background:${escapeHtmlAttr(color)}; box-shadow: 0 0 0 2px ${escapeHtmlAttr(hexToRGBA(color, .14))};"></span>
+                <span class="chipTitle">${escapeHtml(ev.title)}</span>
+              </button>
+            `;
+          }).join("");
+
+          cells.push(`
+            <div class="${cellClasses.join(" ")}" role="gridcell" data-date="${dateId}">
+              <div class="dayTop">
+                <button type="button" class="dayBtn" data-action="addEvent" data-date="${dateId}" aria-label="${escapeHtmlAttr(dayLabel)} 일정 추가">${cellD}</button>
+                <button type="button" class="addMini" data-action="addEvent" data-date="${dateId}" aria-label="${escapeHtmlAttr(dayLabel)} 일정 추가">+</button>
+              </div>
+              <div class="eventsInCell" aria-label="일정 요약">
+                ${chipsHtml || ""}
+                ${more ? `<div class="moreLine" aria-label="추가 일정 ${more}개">+${more}</div>` : ""}
+              </div>
+            </div>
+          `);
+        }
+
+        els.calendarCells.innerHTML = cells.join("");
+
+        // Month label
+        els.monthLabel.textContent = dtf.monthLabel.format(new Date(Date.UTC(year, monthIndex, 1, 12, 0, 0)));
+
+        // Month event count
+        els.eventsCountPill.textContent = `이번 달 일정 ${monthEventsCount}개`;
+
+        // Ensure upcoming label uses settings
+        els.upRangeLabel.textContent = `기본 ${state.settings.upcomingDays}일`;
+
+        // Wire cell actions (delegation)
+        // (Avoid multiple listeners by removing and re-adding with same handler reference)
+      }
+
+      function renderUpcoming(){
+        const days = clamp(Number(state.settings.upcomingDays) || 7, 1, 31);
+        const todayId = seoulDateIdNow();
+        const endExclusive = addDaysToDateId(todayId, days);
+
+        const upcoming = state.events
+          .filter(ev => ev.date >= todayId && ev.date < endExclusive)
+          .slice()
+          .sort((a,b) => a.date.localeCompare(b.date) || (a.title || "").localeCompare(b.title || ""));
+
+        if (!upcoming.length){
+          els.upcomingList.innerHTML = `
+            <div class="listItem" role="listitem" aria-label="일정 없음">
+              <div class="liMain">
+                <div class="liDot" aria-hidden="true" style="background: rgba(100,116,139,.5); box-shadow: none;"></div>
+                <div class="liText">
+                  <div class="liTitle">다가오는 일정이 없어요</div>
+                  <div class="liMeta">달력에서 날짜를 눌러 일정을 추가해보세요.</div>
+                </div>
+              </div>
+              <div class="liAction">
+                <button class="btnLinkLike" type="button" data-action="jumpToday" aria-label="이번 달 오늘로 이동">오늘</button>
+              </div>
+            </div>
+          `;
+          return;
+        }
+
+        els.upcomingList.innerHTML = upcoming.map(ev => {
+          const color = (ev.color && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(ev.color)) ? ev.color : "#2563eb";
+          const dateLabel = formatKoreanMDW(dateFromIdNoonUTC(ev.date));
+          const loc = (ev.location || "").trim();
+          const memo = (ev.memo || "").trim();
+          const metaParts = [];
+          metaParts.push(dateLabel);
+          if (loc) metaParts.push(`📍 ${loc}`);
+          if (memo) metaParts.push("📝 메모");
+
+          return `
+            <div class="listItem" role="listitem">
+              <div class="liMain">
+                <div class="liDot" aria-hidden="true" style="background:${escapeHtmlAttr(color)}; box-shadow: 0 0 0 2px ${escapeHtmlAttr(hexToRGBA(color, .14))};"></div>
+                <div class="liText">
+                  <div class="liTitle">${escapeHtml(ev.title)}</div>
+                  <div class="liMeta">${metaParts.map(escapeHtml).join(" · ")}</div>
+                </div>
+              </div>
+              <div class="liAction">
+                <button type="button" class="btnLinkLike" data-action="editEvent" data-id="${escapeHtmlAttr(ev.id)}" aria-label="일정 수정">수정</button>
+              </div>
+            </div>
+          `;
+        }).join("");
+      }
+
+      function jumpToTodayMonth(){
+        const today = seoulDateIdNow();
+        const [y,m] = today.split("-").map(Number);
+        state.calendarView.year = y;
+        state.calendarView.monthIndex = m - 1;
+        renderCalendar();
+        toast("이번 달로 이동했어요.");
+      }
+
+      // Event modal context
+      const eventCtx = {
+        dateId: null,
+        eventId: null
+      };
+
+      function clearEventModalError(){
+        els.eventModalError.hidden = true;
+        els.eventModalError.textContent = "";
+      }
+      function setEventModalError(msg){
+        els.eventModalError.hidden = false;
+        els.eventModalError.textContent = msg;
+      }
+
+      function loadEventIntoForm(dateId, eventId){
+        clearEventModalError();
+
+        eventCtx.dateId = dateId;
+        eventCtx.eventId = eventId || null;
+
+        const label = `${dateId} · ${formatKoreanMDW(dateFromIdNoonUTC(dateId))}`;
+        els.eventDate.value = label;
+
+        if (eventId){
+          const ev = state.events.find(e => e.id === eventId);
+          if (!ev){
+            setEventModalError("선택한 일정을 찾지 못했어요.");
+            eventCtx.eventId = null;
+          } else {
+            els.eventTitle.value = ev.title || "";
+            els.eventLocation.value = ev.location || "";
+            els.eventMemo.value = ev.memo || "";
+            els.eventColor.value = (ev.color && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(ev.color)) ? ev.color : "#2563eb";
+            els.eventDelete.hidden = false;
+          }
+        }
+
+        if (!eventCtx.eventId){
+          // create mode
+          els.eventTitle.value = "";
+          els.eventLocation.value = "";
+          els.eventMemo.value = "";
+          els.eventColor.value = "#2563eb";
+          els.eventDelete.hidden = true;
+        }
+
+        renderSameDayList(dateId, eventCtx.eventId);
+      }
+
+      function renderSameDayList(dateId, activeId){
+        const same = state.events
+          .filter(e => e.date === dateId)
+          .slice()
+          .sort((a,b) => (a.title || "").localeCompare(b.title || ""));
+
+        if (!same.length){
+          els.sameDaySection.hidden = true;
+          els.sameDayList.innerHTML = "";
+          return;
+        }
+        els.sameDaySection.hidden = false;
+
+        els.sameDayList.innerHTML = same.map(ev => {
+          const color = (ev.color && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(ev.color)) ? ev.color : "#2563eb";
+          const loc = (ev.location || "").trim();
+          const meta = loc ? `📍 ${loc}` : "—";
+          const isActive = activeId && ev.id === activeId;
+
+          return `
+            <div class="miniItem" data-id="${escapeHtmlAttr(ev.id)}" aria-label="같은 날짜 일정">
+              <div class="miniLeft">
+                <span class="liDot" aria-hidden="true" style="background:${escapeHtmlAttr(color)}; box-shadow: 0 0 0 2px ${escapeHtmlAttr(hexToRGBA(color, .14))};"></span>
+                <div style="min-width:0;">
+                  <div class="miniTitle">${escapeHtml(ev.title)}${isActive ? " · (편집 중)" : ""}</div>
+                  <div class="miniMeta">${escapeHtml(meta)}</div>
+                </div>
+              </div>
+              <button type="button" data-action="editSameDay" data-id="${escapeHtmlAttr(ev.id)}" aria-label="이 일정 불러오기">불러오기</button>
+            </div>
+          `;
+        }).join("");
+      }
+
+      function openEventModalForDate(dateId, eventId = null){
+        if (!isValidDateId(dateId)) return;
+        const wasHidden = els.eventOverlay.hidden;
+        loadEventIntoForm(dateId, eventId);
+
+        if (wasHidden){
+          openOverlay(els.eventOverlay, { initialFocus: els.eventTitle });
+        } else {
+          // already open: keep open, just focus title for create mode, or keep focus if editing
+          window.setTimeout(() => {
+            try{ els.eventTitle.focus(); } catch {}
+          }, 0);
+        }
+      }
+
+      function saveEventFromForm(){
+        clearEventModalError();
+
+        const dateId = eventCtx.dateId;
+        if (!isValidDateId(dateId)){
+          setEventModalError("날짜 정보가 올바르지 않아요.");
+          return false;
+        }
+
+        const title = (els.eventTitle.value || "").trim();
+        if (!title){
+          setEventModalError("제목은 필수입니다.");
+          els.eventTitle.focus();
+          return false;
+        }
+
+        const location = (els.eventLocation.value || "").trim();
+        const memo = (els.eventMemo.value || "").trim();
+        const color = (els.eventColor.value || "#2563eb").trim();
+
+        const nowIso = new Date().toISOString();
+
+        if (eventCtx.eventId){
+          const idx = state.events.findIndex(e => e.id === eventCtx.eventId);
+          if (idx < 0){
+            setEventModalError("수정할 일정을 찾지 못했어요.");
+            return false;
+          }
+          state.events[idx] = {
+            ...state.events[idx],
+            date: dateId,
+            title,
+            location,
+            memo,
+            color,
+            updatedAt: nowIso
+          };
+          persistEvents();
+          renderCalendar();
+          renderUpcoming();
+          toast("일정을 수정했어요.");
+          return true;
+        } else {
+          const ev = {
+            id: uid(),
+            date: dateId,
+            title,
+            location,
+            memo,
+            color,
+            createdAt: nowIso,
+            updatedAt: nowIso
+          };
+          state.events.push(ev);
+          persistEvents();
+          renderCalendar();
+          renderUpcoming();
+          toast("일정을 추가했어요.");
+          // Stay on same date, switch to edit mode for convenience
+          loadEventIntoForm(dateId, ev.id);
+          return true;
+        }
+      }
+
+      function deleteCurrentEvent(){
+        if (!eventCtx.eventId) return;
+        const ev = state.events.find(e => e.id === eventCtx.eventId);
+        if (!ev) return;
+
+        const ok = window.confirm(`"${ev.title}" 일정을 삭제할까요?`);
+        if (!ok) return;
+
+        state.events = state.events.filter(e => e.id !== eventCtx.eventId);
+        persistEvents();
+        renderCalendar();
+        renderUpcoming();
+        toast("일정을 삭제했어요.");
+
+        // After delete, stay in create mode for the same date
+        loadEventIntoForm(eventCtx.dateId, null);
+      }
+
+      // ===== Backup (export/import) =====
+      function exportEvents(){
+        const payload = {
+          version: 1,
+          exportedAt: new Date().toISOString(),
+          timezone: TZ,
+          events: state.events
+        };
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        const todayId = seoulDateIdNow().replaceAll("-", "");
+        a.href = url;
+        a.download = `dashboard-events-${todayId}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        toast("일정을 JSON으로 내보냈어요.");
+      }
+
+      function importEventsFromFile(file){
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onerror = () => {
+          toast("파일을 읽지 못했어요.");
+        };
+        reader.onload = () => {
+          try{
+            const text = String(reader.result || "");
+            const data = JSON.parse(text);
+            const arr = Array.isArray(data) ? data : (Array.isArray(data.events) ? data.events : null);
+            if (!Array.isArray(arr)) throw new Error("invalid");
+
+            const normalized = [];
+            for (const raw of arr){
+              if (!raw || typeof raw !== "object") continue;
+              const date = String(raw.date || "");
+              const title = String(raw.title || "").trim();
+              if (!isValidDateId(date) || !title) continue;
+              normalized.push({
+                id: String(raw.id || uid()),
+                date,
+                title,
+                memo: String(raw.memo || ""),
+                location: String(raw.location || ""),
+                color: String(raw.color || "#2563eb"),
+                createdAt: raw.createdAt || undefined,
+                updatedAt: new Date().toISOString()
+              });
+            }
+            if (!normalized.length){
+              toast("가져올 일정이 없어요.");
+              return;
+            }
+
+            // Merge by id (update existing, add new)
+            const map = new Map(state.events.map(e => [e.id, e]));
+            for (const ev of normalized){
+              map.set(ev.id, { ...map.get(ev.id), ...ev });
+            }
+            state.events = Array.from(map.values())
+              .filter(e => e && isValidDateId(e.date) && typeof e.title === "string" && e.title.trim());
+
+            persistEvents();
+            renderCalendar();
+            renderUpcoming();
+            toast(`가져오기 완료: ${normalized.length}개 반영`);
+          } catch {
+            toast("가져오기 실패: JSON 형식을 확인해주세요.");
+          }
+        };
+        reader.readAsText(file, "utf-8");
+      }
+
+      // ===== Quick Links =====
+      function clearLinksModalError(){
+        els.linksModalError.hidden = true;
+        els.linksModalError.textContent = "";
+      }
+      function setLinksModalError(msg){
+        els.linksModalError.hidden = false;
+        els.linksModalError.textContent = msg;
+      }
+
+      function renderLinks(){
+        if (!Array.isArray(state.links) || !state.links.length){
+          els.linksGrid.innerHTML = `
+            <div class="linkCard" style="grid-column: 1 / -1;">
+              <div class="linkIcon" aria-hidden="true">🔗</div>
+              <div class="linkBody">
+                <div class="linkName">링크가 없어요</div>
+                <div class="linkDesc">“링크 관리”에서 링크를 추가해보세요.</div>
+              </div>
+            </div>
+          `;
+          return;
+        }
+
+        els.linksGrid.innerHTML = state.links.map(link => {
+          const icon = (link.icon || "🔗").trim() || "🔗";
+          const name = (link.name || "").trim();
+          const desc = (link.desc || "").trim();
+          const url = String(link.url || "");
+          const safeUrl = normalizeUrl(url) || url;
+
+          return `
+            <a class="linkCard" href="${escapeHtmlAttr(safeUrl)}" target="_blank" rel="noopener noreferrer"
+               aria-label="${escapeHtmlAttr(name ? name + ' 새 탭으로 열기' : '링크 열기')}">
+              <div class="linkIcon" aria-hidden="true">${escapeHtml(icon)}</div>
+              <div class="linkBody">
+                <div class="linkName">${escapeHtml(name || "이름 없음")}</div>
+                <div class="linkDesc">${escapeHtml(desc || "설명 없음")}</div>
+              </div>
+            </a>
+          `;
+        }).join("");
+      }
+
+      function buildLinksEditor(){
+        clearLinksModalError();
+        els.linksEditor.innerHTML = "";
+        const list = Array.isArray(state.links) ? state.links : [];
+        for (const link of list){
+          els.linksEditor.appendChild(makeLinkRow(link));
+        }
+      }
+
+      function makeLinkRow(link){
+        const row = document.createElement("div");
+        row.className = "linkRow";
+        row.dataset.id = String(link.id || uid());
+
+        const icon = (link.icon || "🔗").trim() || "🔗";
+        const name = (link.name || "").trim();
+        const url = (link.url || "").trim();
+        const desc = (link.desc || "").trim();
+
+        row.innerHTML = `
+          <input class="iconInput" type="text" inputmode="text" maxlength="4" value="${escapeHtmlAttr(icon)}" aria-label="아이콘(이모지)" data-f="icon" />
+          <input type="text" maxlength="40" value="${escapeHtmlAttr(name)}" aria-label="이름" data-f="name" placeholder="예: e-class" />
+          <input type="url" value="${escapeHtmlAttr(url)}" aria-label="URL" data-f="url" placeholder="https://..." />
+          <input type="text" maxlength="60" value="${escapeHtmlAttr(desc)}" aria-label="설명" data-f="desc" placeholder="예: 강의/공지/과제" />
+          <button type="button" class="iconBtn danger delBtn" aria-label="삭제" data-action="delLinkRow">🗑</button>
+        `;
+        return row;
+      }
+
+      function openLinksModal(){
+        buildLinksEditor();
+        openOverlay(els.linksOverlay, { initialFocus: els.linksEditor.querySelector('input[data-f="name"]') || els.addLinkRowBtn });
+      }
+
+      function saveLinksFromEditor(){
+        clearLinksModalError();
+
+        const rows = $$(".linkRow", els.linksEditor);
+        const next = [];
+
+        for (const row of rows){
+          const id = row.dataset.id || uid();
+          const icon = (row.querySelector('[data-f="icon"]')?.value || "🔗").trim() || "🔗";
+          const name = (row.querySelector('[data-f="name"]')?.value || "").trim();
+          const urlRaw = (row.querySelector('[data-f="url"]')?.value || "").trim();
+          const desc = (row.querySelector('[data-f="desc"]')?.value || "").trim();
+
+          if (!name){
+            setLinksModalError("모든 링크는 ‘이름’이 필요합니다.");
+            row.querySelector('[data-f="name"]')?.focus();
+            return false;
+          }
+          const url = normalizeUrl(urlRaw);
+          if (!url){
+            setLinksModalError("URL은 http/https로 시작해야 합니다.");
+            row.querySelector('[data-f="url"]')?.focus();
+            return false;
+          }
+
+          next.push({ id, icon, name, url, desc });
+        }
+
+        state.links = next;
+        persistLinks();
+        renderLinks();
+        toast("링크를 저장했어요.");
+        return true;
+      }
+
+      function resetLinksToDefault(){
+        const ok = window.confirm("기본 링크(e-class, U-CAN+)로 초기화할까요? 현재 링크 목록은 덮어씁니다.");
+        if (!ok) return;
+        state.links = DEFAULT_LINKS.slice();
+        persistLinks();
+        buildLinksEditor();
+        renderLinks();
+        toast("기본 링크로 초기화했어요.");
+      }
+
+      // ===== Weather =====
+      function weatherEndpoint(lat, lon){
+        const params = new URLSearchParams({
+          latitude: String(lat),
+          longitude: String(lon),
+          current: "temperature_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m",
+          daily: "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max",
+          timezone: TZ,
+          forecast_days: "2"
+        });
+        return `https://api.open-meteo.com/v1/forecast?${params.toString()}`;
+      }
+
+      function parseSeoulLocalIsoToDate(isoLocal){
+        // isoLocal like: "2026-02-19T14:15" (no offset), but already in Asia/Seoul because we request timezone
+        const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/.exec(String(isoLocal || ""));
+        if (!m) return null;
+        const y = Number(m[1]), mo = Number(m[2]) - 1, d = Number(m[3]);
+        const hh = Number(m[4]), mm = Number(m[5]), ss = Number(m[6] || "0");
+        const localMs = Date.UTC(y, mo, d, hh, mm, ss);
+        const utcMs = localMs - SEOUL_OFFSET_MIN * 60 * 1000;
+        return new Date(utcMs);
+      }
+
+      function renderWeatherCard(container, placeName, data){
+        if (!data || data.error){
+          container.innerHTML = `
+            <div class="wTop">
+              <div class="wPlace">
+                <div class="wPlaceName">${escapeHtml(placeName)}</div>
+                <div class="wUpdate">데이터 없음</div>
+              </div>
+              <span class="pill tiny">—</span>
+            </div>
+            <div class="wError" role="alert">날씨 데이터를 불러오지 못했어요.</div>
+          `;
+          return;
+        }
+
+        const cur = data.current || {};
+        const daily = data.daily || {};
+        const code = Number(cur.weather_code);
+        const meta = WEATHER_CODE_MAP.get(Number.isFinite(code) ? code : -1);
+
+        const t = safeNum(cur.temperature_2m);
+        const feels = safeNum(cur.apparent_temperature);
+        const wind = safeNum(cur.wind_speed_10m);
+        const precip = safeNum(cur.precipitation);
+
+        const tMax0 = safeNum(daily.temperature_2m_max?.[0]);
+        const tMin0 = safeNum(daily.temperature_2m_min?.[0]);
+        const pProb0 = safeNum(daily.precipitation_probability_max?.[0]);
+        const tMax1 = safeNum(daily.temperature_2m_max?.[1]);
+        const tMin1 = safeNum(daily.temperature_2m_min?.[1]);
+        const pProb1 = safeNum(daily.precipitation_probability_max?.[1]);
+
+        const curTimeStr = cur.time || "";
+        const curDate = parseSeoulLocalIsoToDate(curTimeStr);
+        const curTimeLabel = curDate ? dtf.timeHM.format(curDate) : (curTimeStr.includes("T") ? curTimeStr.split("T")[1] : "—");
+
+        container.innerHTML = `
+          <div class="wTop">
+            <div class="wPlace">
+              <div class="wPlaceName">${escapeHtml(placeName)}</div>
+              <div class="wUpdate">데이터 기준: ${escapeHtml(curTimeLabel)} (KST)</div>
+            </div>
+            <span class="pill tiny">${escapeHtml(meta.text)}</span>
+          </div>
+
+          <div class="wNow">
+            <div class="wState">
+              <div class="wIcon" aria-hidden="true">${escapeHtml(meta.icon)}</div>
+              <div class="wText">
+                <div class="wDesc">${escapeHtml(meta.text)}</div>
+                <div class="wSmall">
+                  <span>체감 ${fmtC(feels)}</span>
+                  <span>풍속 ${fmtWind(wind)}</span>
+                </div>
+              </div>
+            </div>
+            <div class="wTemp" aria-label="현재 기온">${fmtC(t)}</div>
+          </div>
+
+          <div class="wGrid2" aria-label="추가 정보">
+            <div class="wKV">
+              <div class="wK">강수</div>
+              <div class="wV">${fmtPrecip(precip)} <span class="muted tiny">(현재)</span></div>
+            </div>
+            <div class="wKV">
+              <div class="wK">강수확률</div>
+              <div class="wV">${fmtProb(pProb0)} <span class="muted tiny">(오늘 최대)</span></div>
+            </div>
+          </div>
+
+          <div class="wGrid2" aria-label="오늘/내일 최고최저">
+            <div class="wKV">
+              <div class="wK">오늘 최고/최저</div>
+              <div class="wV">${fmtC(tMax0)} / ${fmtC(tMin0)}</div>
+            </div>
+            <div class="wKV">
+              <div class="wK">내일 최고/최저</div>
+              <div class="wV">${fmtC(tMax1)} / ${fmtC(tMin1)} <span class="muted tiny">(${fmtProb(pProb1)})</span></div>
+            </div>
+          </div>
+        `;
+      }
+
+      function fmtC(v){
+        if (!Number.isFinite(v)) return "—";
+        return `${Math.round(v)}°C`;
+      }
+      function fmtWind(v){
+        if (!Number.isFinite(v)) return "—";
+        return `${Math.round(v)} km/h`;
+      }
+      function fmtPrecip(v){
+        if (!Number.isFinite(v)) return "—";
+        // precipitation is in mm (current), show with one decimal if small
+        const num = Math.round(v * 10) / 10;
+        return `${num} mm`;
+      }
+      function fmtProb(v){
+        if (!Number.isFinite(v)) return "—";
+        return `${Math.round(v)}%`;
+      }
+      function safeNum(x){
+        const n = Number(x);
+        return Number.isFinite(n) ? n : NaN;
+      }
+
+      function setWeatherError(msg){
+        els.weatherError.hidden = !msg;
+        els.weatherError.textContent = msg || "";
+      }
+
+      async function fetchWeather(){
+        setWeatherError("");
+        els.refreshWeatherBtn.disabled = true;
+        els.refreshWeatherBtn.textContent = "불러오는 중…";
+        try{
+          const [home, school] = await Promise.all([
+            fetch(weatherEndpoint(LOCATIONS.home.lat, LOCATIONS.home.lon)).then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }),
+            fetch(weatherEndpoint(LOCATIONS.school.lat, LOCATIONS.school.lon)).then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+          ]);
+          state.weather.home = home;
+          state.weather.school = school;
+          state.weather.lastFetchAt = new Date();
+
+          renderWeather();
+          toast("날씨를 업데이트했어요.");
+        } catch (e){
+          const msg = "날씨를 불러오지 못했어요. 네트워크/CORS 차단일 수 있어요.";
+          setWeatherError(msg);
+          // Render fallback cards with place names
+          renderWeatherCard(els.weatherHome, LOCATIONS.home.name, null);
+          renderWeatherCard(els.weatherSchool, LOCATIONS.school.name, null);
+        } finally {
+          els.refreshWeatherBtn.disabled = false;
+          els.refreshWeatherBtn.textContent = "새로고침";
+        }
+      }
+
+      function renderWeather(){
+        renderWeatherCard(els.weatherHome, LOCATIONS.home.name, state.weather.home);
+        renderWeatherCard(els.weatherSchool, LOCATIONS.school.name, state.weather.school);
+
+        const pill = els.weatherUpdatedAtPill;
+        if (state.weather.lastFetchAt){
+          const t = dtf.time.format(state.weather.lastFetchAt);
+          pill.textContent = `마지막 새로고침: ${t}`;
+        } else {
+          pill.textContent = "마지막 새로고침: —";
+        }
+      }
+
+      // ===== Pomodoro =====
+      const pomo = {
+        running: false,
+        mode: "focus", // focus | break | done
+        cycle: 1,
+        remainingMs: 0,
+        endAt: 0,
+        ticker: null,
+        sessionTotalMs: 0
+      };
+
+      function initPomodoroRuntime(){
+        // reset based on config
+        pomo.running = false;
+        pomo.mode = "focus";
+        pomo.cycle = 1;
+        pomo.sessionTotalMs = Math.max(0, Number(state.pomodoro.focusMin) * 60 * 1000);
+        pomo.remainingMs = pomo.sessionTotalMs;
+        pomo.endAt = 0;
+        if (pomo.ticker){
+          clearInterval(pomo.ticker);
+          pomo.ticker = null;
+        }
+        renderPomodoro();
+      }
+
+      function msToMMSS(ms){
+        const s = Math.max(0, Math.ceil(ms / 1000));
+        const mm = Math.floor(s / 60);
+        const ss = s % 60;
+        return `${pad2(mm)}:${pad2(ss)}`;
+      }
+
+      function renderPomodoro(){
+        const modeText = pomo.mode === "focus" ? "집중" : (pomo.mode === "break" ? "휴식" : "완료");
+        els.pomoMode.textContent = modeText;
+
+        const timeStr = pomo.mode === "done" ? "00:00" : msToMMSS(pomo.remainingMs);
+        els.pomoTime.textContent = timeStr;
+
+        const totalCycles = clamp(Number(state.pomodoro.cycles) || 4, 1, 12);
+        els.pomoCycle.textContent = `사이클 ${clamp(pomo.cycle, 1, totalCycles)}/${totalCycles}`;
+
+        const f = clamp(Number(state.pomodoro.focusMin) || 25, 1, 180);
+        const b = clamp(Number(state.pomodoro.breakMin) || 5, 0, 60);
+        els.pomoLengths.textContent = `집중 ${f}분 · 휴식 ${b}분`;
+
+        els.pomoStartPause.textContent = pomo.running ? "일시정지" : (pomo.mode === "done" ? "다시 시작" : "시작");
+        els.pomoStatusText.textContent = pomo.running ? "진행 중" : (pomo.mode === "done" ? "완료됨 · 다시 시작 가능" : "대기 중");
+
+        // Progress
+        const total = Math.max(1, pomo.sessionTotalMs || 1);
+        const done = clamp(1 - (pomo.remainingMs / total), 0, 1);
+        const percent = Math.round(done * 100);
+        els.pomoProgressBar.setAttribute("aria-valuenow", String(percent));
+
+        const circumference = 301.59; // ~2πr (r=48)
+        const offset = circumference * (1 - done);
+        els.pomoProgressCircle.setAttribute("stroke-dashoffset", String(offset));
+
+        if (pomo.mode === "break"){
+          els.pomoProgressCircle.setAttribute("stroke", "rgba(16,185,129,.95)");
+        } else {
+          els.pomoProgressCircle.setAttribute("stroke", "rgba(37,99,235,.95)");
+        }
+      }
+
+      function startPomodoro(){
+        if (pomo.mode === "done"){
+          // restart
+          initPomodoroRuntime();
+        }
+        if (pomo.running) return;
+
+        // if remaining is 0, reset current mode duration
+        if (pomo.remainingMs <= 0){
+          setPomoMode(pomo.mode === "break" ? "break" : "focus");
+        }
+
+        pomo.running = true;
+        pomo.endAt = Date.now() + pomo.remainingMs;
+
+        if (pomo.ticker) clearInterval(pomo.ticker);
+        pomo.ticker = setInterval(() => {
+          if (!pomo.running) return;
+          const left = pomo.endAt - Date.now();
+          pomo.remainingMs = left;
+
+          if (left <= 0){
+            onPomodoroComplete();
+          }
+          renderPomodoro();
+        }, 200);
+
+        renderPomodoro();
+      }
+
+      function pausePomodoro(){
+        if (!pomo.running) return;
+        pomo.running = false;
+        pomo.remainingMs = Math.max(0, pomo.endAt - Date.now());
+        if (pomo.ticker){
+          clearInterval(pomo.ticker);
+          pomo.ticker = null;
+        }
+        renderPomodoro();
+      }
+
+      function resetPomodoro(){
+        initPomodoroRuntime();
+        toast("뽀모도로를 리셋했어요.");
+      }
+
+      function setPomoMode(mode){
+        pomo.mode = mode;
+        if (mode === "done"){
+          pomo.sessionTotalMs = 1;
+          pomo.remainingMs = 0;
+          return;
+        }
+        const lenMin = mode === "focus"
+          ? clamp(Number(state.pomodoro.focusMin) || 25, 1, 180)
+          : clamp(Number(state.pomodoro.breakMin) || 5, 0, 60);
+
+        pomo.sessionTotalMs = Math.max(0, lenMin * 60 * 1000);
+        pomo.remainingMs = pomo.sessionTotalMs;
+        pomo.endAt = Date.now() + pomo.remainingMs;
+      }
+
+      async function maybeNotify(title, body){
+        if (!state.pomodoro.notify) return;
+        if (!("Notification" in window)) return;
+        try{
+          if (Notification.permission === "granted"){
+            new Notification(title, { body });
+          } else if (Notification.permission === "default"){
+            // Should only be called from user gesture; here we won't request.
+          }
+        } catch {}
+      }
+
+      function playBeep(){
+        if (!state.pomodoro.sound) return;
+        try{
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (!AudioCtx) return;
+          const ctx = playBeep._ctx || (playBeep._ctx = new AudioCtx());
+          // resume if suspended (requires user gesture at some point)
+          if (ctx.state === "suspended") ctx.resume().catch(()=>{});
+
+          const o = ctx.createOscillator();
+          const g = ctx.createGain();
+          o.type = "sine";
+          o.frequency.value = 880;
+          g.gain.value = 0.06;
+
+          o.connect(g);
+          g.connect(ctx.destination);
+          o.start();
+
+          setTimeout(() => {
+            o.stop();
+            o.disconnect();
+            g.disconnect();
+          }, 220);
+        } catch {}
+      }
+
+      function flashPomoCard(){
+        els.pomoCard.classList.remove("pomoFlash");
+        // reflow
+        void els.pomoCard.offsetWidth;
+        els.pomoCard.classList.add("pomoFlash");
+      }
+
+      function onPomodoroComplete(){
+        const wasRunning = pomo.running;
+
+        // Stop current ticker tick
+        pomo.remainingMs = 0;
+
+        playBeep();
+        flashPomoCard();
+
+        const totalCycles = clamp(Number(state.pomodoro.cycles) || 4, 1, 12);
+
+        if (pomo.mode === "focus"){
+          toast("집중 끝! 휴식을 시작해요.");
+          maybeNotify("뽀모도로", "집중이 끝났어요. 휴식을 시작해요.");
+          setPomoMode("break");
+        } else if (pomo.mode === "break"){
+          if (pomo.cycle < totalCycles){
+            pomo.cycle += 1;
+            toast(`휴식 끝! ${pomo.cycle}/${totalCycles} 사이클 시작.`);
+            maybeNotify("뽀모도로", `휴식이 끝났어요. ${pomo.cycle}/${totalCycles} 집중을 시작해요.`);
+            setPomoMode("focus");
+          } else {
+            toast("모든 사이클 완료! 🎉");
+            maybeNotify("뽀모도로", "모든 사이클이 완료됐어요!");
+            pomo.running = false;
+            setPomoMode("done");
+            if (pomo.ticker){
+              clearInterval(pomo.ticker);
+              pomo.ticker = null;
+            }
+            renderPomodoro();
+            return;
+          }
+        }
+
+        // Continue running automatically if it was running
+        if (wasRunning){
+          // If break length is 0, immediately complete into next phase
+          if (pomo.sessionTotalMs <= 0){
+            // prevent infinite recursion: schedule async
+            setTimeout(() => onPomodoroComplete(), 0);
+          } else {
+            pomo.running = true;
+            pomo.endAt = Date.now() + pomo.remainingMs;
+          }
+        } else {
+          pomo.running = false;
+        }
+      }
+
+      function openPomodoroSettings(){
+        els.pomoModalError.hidden = true;
+        els.pomoModalError.textContent = "";
+
+        els.focusMin.value = String(clamp(Number(state.pomodoro.focusMin) || 25, 1, 180));
+        els.breakMin.value = String(clamp(Number(state.pomodoro.breakMin) || 5, 0, 60));
+        els.cycles.value = String(clamp(Number(state.pomodoro.cycles) || 4, 1, 12));
+        els.soundOn.value = state.pomodoro.sound ? "on" : "off";
+        els.notifyOn.value = state.pomodoro.notify ? "on" : "off";
+
+        openOverlay(els.pomoOverlay, { initialFocus: els.focusMin });
+      }
+
+      async function savePomodoroSettings(){
+        els.pomoModalError.hidden = true;
+        els.pomoModalError.textContent = "";
+
+        const f = clamp(Number(els.focusMin.value) || 25, 1, 180);
+        const b = clamp(Number(els.breakMin.value) || 5, 0, 60);
+        const c = clamp(Number(els.cycles.value) || 4, 1, 12);
+        const sound = els.soundOn.value === "on";
+        const notify = els.notifyOn.value === "on";
+
+        // Request Notification permission only on user gesture (this submit qualifies)
+        if (notify && ("Notification" in window)){
+          try{
+            if (Notification.permission === "default"){
+              await Notification.requestPermission();
+            }
+          } catch {}
+        }
+
+        state.pomodoro = { ...state.pomodoro, focusMin: f, breakMin: b, cycles: c, sound, notify };
+        persistPomodoro();
+
+        // Apply durations safely:
+        // - If not running, reset to focus with new config
+        // - If running, keep current remaining and sessionTotalMs (so progress doesn't jump),
+        //   but new config will apply next mode switch/reset.
+        if (!pomo.running){
+          initPomodoroRuntime();
+        } else {
+          // keep remainingMs/sessionTotalMs for current mode
+          renderPomodoro();
+        }
+
+        toast("뽀모도로 설정을 저장했어요.");
+        return true;
+      }
+
+      // ===== Wire events =====
+      function wireCalendarEvents(){
+        // Delegated click handlers for calendar + upcoming
+        document.addEventListener("click", (e) => {
+          const actionEl = e.target.closest("[data-action]");
+          if (!actionEl) return;
+
+          const action = actionEl.getAttribute("data-action");
+          if (!action) return;
+
+          if (action === "addEvent"){
+            const dateId = actionEl.getAttribute("data-date");
+            openEventModalForDate(dateId, null);
+          }
+          if (action === "editEvent"){
+            const id = actionEl.getAttribute("data-id");
+            const ev = state.events.find(x => x.id === id);
+            if (ev) openEventModalForDate(ev.date, ev.id);
+          }
+          if (action === "editSameDay"){
+            const id = actionEl.getAttribute("data-id");
+            if (eventCtx.dateId) loadEventIntoForm(eventCtx.dateId, id);
+          }
+          if (action === "jumpToday"){
+            jumpToTodayMonth();
+          }
+          if (action === "delLinkRow"){
+            const row = actionEl.closest(".linkRow");
+            row?.remove();
+          }
+        });
+
+        // Month nav
+        els.prevMonth.addEventListener("click", () => {
+          let y = state.calendarView.year;
+          let m = state.calendarView.monthIndex - 1;
+          if (m < 0){ m = 11; y -= 1; }
+          state.calendarView.year = y;
+          state.calendarView.monthIndex = m;
+          renderCalendar();
+        });
+        els.nextMonth.addEventListener("click", () => {
+          let y = state.calendarView.year;
+          let m = state.calendarView.monthIndex + 1;
+          if (m > 11){ m = 0; y += 1; }
+          state.calendarView.year = y;
+          state.calendarView.monthIndex = m;
+          renderCalendar();
+        });
+
+        // Event form
+        els.eventForm.addEventListener("submit", (e) => {
+          e.preventDefault();
+          const ok = saveEventFromForm();
+          if (ok && eventCtx.eventId){
+            // if editing, close after save (for add mode we keep open to add multiple quickly)
+            closeOverlay(els.eventOverlay);
+          }
+        });
+        els.eventDelete.addEventListener("click", () => deleteCurrentEvent());
+
+        // Export/import
+        els.exportEvents.addEventListener("click", exportEvents);
+        els.importEventsBtn.addEventListener("click", () => els.importEventsInput.click());
+        els.importEventsInput.addEventListener("change", (e) => {
+          const file = e.target.files && e.target.files[0];
+          if (file) importEventsFromFile(file);
+          // allow re-select same file
+          e.target.value = "";
+        });
+
+        // Links modal
+        els.manageLinksBtn.addEventListener("click", openLinksModal);
+        els.addLinkRowBtn.addEventListener("click", () => {
+          els.linksEditor.appendChild(makeLinkRow({ id: uid(), icon: "🔗", name: "", url: "", desc: "" }));
+          const row = els.linksEditor.lastElementChild;
+          row?.querySelector('[data-f="name"]')?.focus();
+        });
+        els.resetLinksBtn.addEventListener("click", resetLinksToDefault);
+        els.linksForm.addEventListener("submit", (e) => {
+          e.preventDefault();
+          const ok = saveLinksFromEditor();
+          if (ok) closeOverlay(els.linksOverlay);
+        });
+
+        // Weather
+        els.refreshWeatherBtn.addEventListener("click", fetchWeather);
+
+        // Pomodoro
+        els.pomoSettingsBtn.addEventListener("click", openPomodoroSettings);
+        els.pomoStartPause.addEventListener("click", () => {
+          // user gesture: resume audio context early
+          if (state.pomodoro.sound) playBeep._ctx?.resume?.().catch(()=>{});
+          if (pomo.running) pausePomodoro();
+          else startPomodoro();
+        });
+        els.pomoReset.addEventListener("click", resetPomodoro);
+        els.pomoForm.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const ok = await savePomodoroSettings();
+          if (ok) closeOverlay(els.pomoOverlay);
+        });
+      }
+
+      // ===== HTML escaping =====
+      function escapeHtml(str){
+        return String(str)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#39;");
+      }
+      function escapeHtmlAttr(str){
+        return escapeHtml(str).replaceAll("\n", " ");
+      }
+      function hexToRGBA(hex, alpha){
+        const h = String(hex || "").replace("#", "").trim();
+        let r, g, b;
+        if (h.length === 3){
+          r = parseInt(h[0] + h[0], 16);
+          g = parseInt(h[1] + h[1], 16);
+          b = parseInt(h[2] + h[2], 16);
+        } else if (h.length === 6){
+          r = parseInt(h.slice(0,2), 16);
+          g = parseInt(h.slice(2,4), 16);
+          b = parseInt(h.slice(4,6), 16);
+        } else {
+          r = 37; g = 99; b = 235;
+        }
+        const a = clamp(Number(alpha) || 0.14, 0, 1);
+        return `rgba(${r},${g},${b},${a})`;
+      }
+
+      // ===== Init =====
+      function init(){
+        cacheEls();
+        wireModalSystem();
+        buildAnalogTicks();
+
+        renderCalendar();
+        renderUpcoming();
+        renderLinks();
+        renderWeather();
+        initPomodoroRuntime();
+
+        startClock();
+        wireCalendarEvents();
+
+        // Fetch weather on load
+        fetchWeather();
+      }
+
+      document.addEventListener("DOMContentLoaded", init);
+    })();
+  </script>
+</body>
 </html>
